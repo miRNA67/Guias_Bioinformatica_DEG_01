@@ -7,7 +7,7 @@
 | N° | Programa | Estado |
 |---|---|---|
 | **01** | **eggNOG-mapper v2.1.13** | ✅ Esta guía |
-| 02 | *(próximamente)* | — |
+| **02** | **HGTector v2.0b** | ✅ Disponible |
 | 03 | *(próximamente)* | — |
 
 ---
@@ -159,4 +159,125 @@ Cuando se usa `--report_orthologs`, se genera adicionalmente el archivo `.emappe
 
 ---
 
+**Guía 01 de N** · Serie Guías de Bioinformática — Servidor DEG01  
+**Responsable:** Dr. Frank Guzman Escudero  
+**Laboratorio:** Biomolecules Laboratory — Facultad de Ciencias de la Salud, UPC  
+**Actualizado:** Abril, 2026
+
+---
+---
+
+# Guía 02 — HGTector v2.0b
+
+Estandariza el flujo de trabajo para la **identificación de eventos de Transferencia Horizontal de Genes (HGT)** en el Biomolecules Laboratory. El pipeline utiliza un enfoque basado en la atipicidad de la distribución taxonómica de los mejores hits de homología, complementando los resultados de anotación funcional obtenidos con eggNOG-mapper.
+
+---
+
+## Índice — Guía 02
+
+| Sección | Contenido |
+|---|---|
+| §1 | Configuración del Entorno |
+| §2-A | Flujo de Trabajo — Paso 1: Búsqueda de Homología (Search) |
+| §2-B | Flujo de Trabajo — Paso 2: Análisis Estadístico (Analyze) |
+| §3 | Interpretación del HGT Score |
+| §4 | Archivos de Salida Clave |
+---
+
+## 1. Configuración del Entorno
+
+Antes de iniciar el análisis, activa el ambiente de Conda:
+
+```bash
+conda activate hgtector
+```
+
+> **Nota:** Las variables de entorno `$HGTECTOR_DB` y `$HGTECTOR_TAX` están pre-configuradas en el servidor para apuntar a la base de datos centralizada en `/db/hgtector_db/`.
+
+---
+
+## 2. Flujo de Trabajo (Pipeline)
+
+HGTector opera en dos pasos secuenciales: primero una búsqueda de homología y luego el análisis estadístico sobre esos resultados.
+
+### A. Paso 1: Búsqueda de Homología (`search`)
+
+Utiliza Diamond para comparar las proteínas de entrada contra la base de datos de referencia. Es el paso de mayor carga computacional.
+
+```bash
+hgtector search \
+    -i /ruta/al/archivo/archivo_proteinas.faa \
+    -o resultados_hgt_search \
+    -d $HGTECTOR_DB \
+    -t $HGTECTOR_TAX \
+    -p 30
+```
+
+| Parámetro | Función |
+|---|---|
+| `-i` | Entrada en formato FASTA de aminoácidos (`.faa`). |
+| `-d $HGTECTOR_DB` | Ruta a la base de datos Diamond pre-formateada. |
+| `-t $HGTECTOR_TAX` | Directorio con los archivos de taxonomía NCBI. |
+| `-p 30` | Número de hilos de procesamiento (CPUs). No confundir con `--cpu`. |
+
+### B. Paso 2: Análisis Estadístico (`analyze`)
+
+Procesa los resultados de la búsqueda para calcular las puntuaciones de HGT basadas en el consenso taxonómico.
+
+```bash
+hgtector analyze \
+    -i resultados_hgt_search/archivo_proteinas.tsv \
+    -o resultados_hgt_final \
+    -t $HGTECTOR_TAX
+```
+
+> **Nota:** El archivo de entrada `-i` corresponde al `.tsv` generado en el Paso 1, ubicado dentro del directorio `resultados_hgt_search/`.
+
+---
+
+## 3. Interpretación del HGT Score
+
+El HGT Score es una medida de **atipicidad taxonómica** que oscila entre 0 y 1. Un valor alto indica que el gen tiene mayor homología con grupos taxonómicos distantes que con el propio organismo.
+
+| Score | Categoría | Interpretación |
+|---|---|---|
+| 0.0 – 0.5 | Típico | Genes heredados verticalmente o transferencias muy antiguas ya mimetizadas con el genoma (amelioración). |
+| 0.5 – 0.7 | Moderado | Candidato de interés. El gen muestra más homología con grupos externos. Común en genes metabólicos adaptativos. |
+| 0.8 – 1.0 | Fuerte | Transferencias muy recientes o genes bajo presión selectiva extrema. Alta identidad con el donante lejano. |
+
+---
+
+## 4. Archivos de Salida Clave
+
+El directorio de salida del análisis (`resultados_hgt_final/`) contiene los siguientes archivos críticos:
+
+- **`hgts/*.txt`:** La "lista de oro" con los IDs de los genes predichos como HGT, su Score y el TaxID del donante potencial.
+- **`scores.tsv`:** Tabla completa con las métricas de todos los genes analizados.
+- **`scatter.png`:** Gráfico de dispersión que visualiza la relación entre hits cercanos (*close*) y distales (*distal*). Los puntos alejados de la diagonal son candidatos a HGT.
+- **`*.kde.png` / `*.hist.png`:** Gráficos de densidad que ayudan a validar estadísticamente si los candidatos son realmente valores atípicos (*outliers*).
+
+---
+
+## 5. Buenas Prácticas y Mantenimiento
+
+1. **Validación funcional cruzada:** Se recomienda cruzar los IDs del archivo `hgts/*.txt` con las anotaciones de eggNOG-mapper (Guía 01) para identificar la relevancia biológica de cada transferencia (p. ej., resistencia a antibióticos, islas genómicas o enzimas CAZy).
+
+2. **Permisos:** Asegura que los resultados sean legibles para el resto del equipo:
+   ```bash
+   chmod -R 755 resultados_hgt_final
+   ```
+
+3. **Selección de paso según etapa del análisis:**
+
+   | Etapa | Comando | Entrada | Salida |
+   |---|---|---|---|
+   | Homología | `hgtector search` | `.faa` (proteínas) | `.tsv` (hits Diamond) |
+   | Detección HGT | `hgtector analyze` | `.tsv` (del search) | `hgts/*.txt`, `scores.tsv`, gráficos |
+
+---
+
+**Guía 02 de N** · Serie Guías de Bioinformática — Servidor DEG01  
+**Responsable:** Dr. Frank Guzman Escudero  
+**Laboratorio:** Biomolecules Laboratory — Facultad de Ciencias de la Salud, UPC  
+**Actualizado:** Abril, 2026
 
